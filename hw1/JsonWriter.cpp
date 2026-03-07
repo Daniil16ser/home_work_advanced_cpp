@@ -117,7 +117,9 @@ int main() {
         Product product;
         product.SetPrice("100");
         
-
+        std::vector<Customer> customers;
+        customers.push_back(std::move(customer1));
+        customers.push_back(std::move(customer2));
     
     return 0;
 }
