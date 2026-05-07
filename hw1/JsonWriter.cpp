@@ -1,46 +1,42 @@
 #include <string>
 #include <iostream>
 #include <fstream>
-#include <sstream>
-#include <memory>
-#include <stdexcept>
 #include <vector>
+#include <memory>
+
 
 class JsonWriter {
+private:
+    std::ofstream file;
+    bool first = true;
+    bool moved_from = false;
+    
 public:
-    explicit JsonWriter(const std::string& filename) 
-        : file(filename)
-    {
+    explicit JsonWriter(const std::string& filename) : file(filename) {
         if (!file.is_open()) {
             throw std::runtime_error("Cannot open file: " + filename);
         }
         file << "{";
     }
     
-    void Add(const std::string& key, const std::string& value) {
-        if (!first) {
-            file << ",";
+    ~JsonWriter() {
+        if (!moved_from && file.is_open()) {
+            file << "}";
         }
-        
+    }
+    
+    void Add(const std::string& key, const std::string& value) {
+        if (!first) file << ",";
         file << "\"" << key << "\":\"" << value << "\"";
         first = false;
     }
-
-    ~JsonWriter() {
-        if (file.is_open())
-        {
-            file << "}";
-        }
-
-    }
     
-    JsonWriter(const JsonWriter&) = delete;
-    JsonWriter& operator=(const JsonWriter&) = delete;
-    
-    JsonWriter(JsonWriter&& other) noexcept 
+    JsonWriter(JsonWriter&& other) noexcept
         : file(std::move(other.file))
         , first(other.first)
+        , moved_from(false)
     {
+        other.moved_from = true;
         other.first = true;
     }
     
@@ -48,78 +44,85 @@ public:
         if (this != &other) {
             file = std::move(other.file);
             first = other.first;
+            moved_from = false;
+            
+            other.moved_from = true;
             other.first = true;
         }
         return *this;
     }
     
+    JsonWriter(const JsonWriter&) = delete;
+    JsonWriter& operator=(const JsonWriter&) = delete;
+};
+
+class Customer {
 private:
-    std::ofstream file;
-    bool first = true;
-};
-
-class Entity {
-public:
-    explicit Entity(const std::string& filename): writer(filename){}
-    
-    virtual ~Entity() = default;
-
-    virtual void Add(const std::string& key, const std::string& value) {
-        writer.Add(key, value);
-    }
-    
-    Entity(const Entity&) = delete;
-    Entity& operator=(const Entity&) = delete;
-    
-    Entity(Entity&& other) noexcept = default;
-    Entity& operator=(Entity&& other) noexcept = default;
-    
-protected:
     JsonWriter writer;
+    std::string name;
+    int age = 0;
+    
+public:
+    explicit Customer(const std::string& filename) : writer(filename) {
+        writer.Add("type", "customer");
+    }
+    
+    void SetName(const std::string& n) {
+        name = n;
+        writer.Add("name", n);
+    }
+    
+    void SetAge(int a) {
+        age = a;
+        writer.Add("age", std::to_string(a));
+    }
+    
+    Customer(Customer&& other) noexcept = default;
+    Customer& operator=(Customer&& other) noexcept = default;
+
+    Customer(const Customer&) = delete;
+    Customer& operator=(const Customer&) = delete;
 };
 
-
-class Customer : public Entity {
+class Product {
+private:
+    JsonWriter writer;
+    double price = 0.0;
+    
 public:
-    Customer() : Entity("customer.json") {
-        Add("type", "customer");
+    explicit Product(const std::string& filename) : writer(filename) {
+        writer.Add("type", "product");
     }
     
-    void SetName(const std::string& name) {
-        Add("name", name);
+    void SetPrice(double p) {
+        price = p;
+        writer.Add("price", std::to_string(p));
     }
     
-    void SetAge(const std::string& age) {
-        Add("age", age);
-    }
-};
-
-class Product : public Entity {
-public:
-    Product() : Entity("product.json") {
-        Add("type", "product");
-    }
+    Product(Product&& other) noexcept = default;
+    Product& operator=(Product&& other) noexcept = default;
     
-    void SetPrice(const std::string& price) {
-        Add("price", price);
-    }
+    Product(const Product&) = delete;
+    Product& operator=(const Product&) = delete;
 };
 
 int main() {
-        Customer customer1;
-        customer1.SetName("Daniil");
-        customer1.SetAge("19");
+
+        Customer alice("daniil.json");
+        alice.SetName("Daniil");
+        alice.SetAge(19);
         
-        Customer customer2;
-        customer2.SetName("Yuriy");
-        customer2.SetAge("34");
+        Customer bob("yuriy.json");
+        bob.SetName("Yuriy");
+        bob.SetAge(34);
         
-        Product product;
-        product.SetPrice("100");
+        Product laptop("laptop.json");
+        laptop.SetPrice(999.99);
         
         std::vector<Customer> customers;
-        customers.push_back(std::move(customer1));
-        customers.push_back(std::move(customer2));
+        customers.reserve(2);
+        customers.push_back(std::move(alice));
+        customers.push_back(std::move(bob));
     
     return 0;
 }
