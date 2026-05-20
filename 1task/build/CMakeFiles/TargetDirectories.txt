@@ -1,0 +1,3 @@
+/home/daniil/Desktop/mipt/c/home_work_advanced_cpp/1task/build/CMakeFiles/util_test.dir
+/home/daniil/Desktop/mipt/c/home_work_advanced_cpp/1task/build/CMakeFiles/edit_cache.dir
+/home/daniil/Desktop/mipt/c/home_work_advanced_cpp/1task/build/CMakeFiles/rebuild_cache.dir

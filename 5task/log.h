@@ -64,7 +64,7 @@ private:
 public:
     // Get the singleton instance
     static Log* Instance() {
-        static Log instance;
+        static Log instance;   // Создается один раз при первом вызове (статическое поле внутри статической функции)
         return &instance;
     }
     
