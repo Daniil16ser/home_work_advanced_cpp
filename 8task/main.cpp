@@ -1,16 +1,20 @@
 #include <iostream>
+#include <memory>
 #include <map>
 #include <string>
-#include <memory>
+#include <unordered_map>
+#include <vector>
+#include <algorithm>
 #include <stdexcept>
 
-// Базовый класс выражения (Компоновщик)
+// (Компоновщик)
 class Expression {
 public:
     virtual ~Expression() = default;
-    virtual double calculate(const std::map<std::string, double>& context) const = 0;
-    virtual void print(std::ostream& os = std::cout) const = 0;
-    virtual bool isLeaf() const { return false; } // Для определения приспособленцев
+    virtual double evaluate(const std::map<std::string, double>& context) const = 0;
+    virtual void print(std::ostream& os = std::cout, int depth = 0) const = 0;
+    virtual size_t getHash() const = 0;
+    virtual bool isEqual(const Expression& other) const = 0;
     
     friend std::ostream& operator<<(std::ostream& os, const Expression& expr) {
         expr.print(os);
@@ -18,335 +22,360 @@ public:
     }
 };
 
-// Константа (Приспособленец)
+// Приспособленец для констант
 class Constant : public Expression {
 private:
-    double value;
-    int refCount; // Счетчик ссылок
+    double value_;
     
+    // Приватный конструктор, доступ только через фабрику
     friend class ExpressionFactory;
-    Constant(double val) : value(val), refCount(0) {}
+    explicit Constant(double value) : value_(value) {}
     
 public:
-    double getValue() const { return value; }
-    bool isLeaf() const override { return true; }
+    double getValue() const { return value_; }
     
-    void addRef() { refCount++; }
-    void release() { refCount--; }
-    int getRefCount() const { return refCount; }
-    
-    double calculate(const std::map<std::string, double>& context) const override {
-        return value;
+    double evaluate(const std::map<std::string, double>&) const override {
+        return value_;
     }
     
-    void print(std::ostream& os = std::cout) const override {
-        os << value;
+    void print(std::ostream& os = std::cout, int = 0) const override {
+        os << value_;
+    }
+    
+    size_t getHash() const override {
+        return std::hash<double>{}(value_);
+    }
+    
+    bool isEqual(const Expression& other) const override {
+        const Constant* c = dynamic_cast<const Constant*>(&other);
+        return c && c->value_ == value_;
     }
 };
 
-// Переменная (Приспособленец)
+// Приспособленец для переменных
 class Variable : public Expression {
 private:
-    std::string name;
-    int refCount; // Счетчик ссылок
+    std::string name_;
     
     friend class ExpressionFactory;
-    Variable(const std::string& varName) : name(varName), refCount(0) {}
+    explicit Variable(const std::string& name) : name_(name) {}
     
 public:
-    const std::string& getName() const { return name; }
-    bool isLeaf() const override { return true; }
+    const std::string& getName() const { return name_; }
     
-    void addRef() { refCount++; }
-    void release() { refCount--; }
-    int getRefCount() const { return refCount; }
-    
-    double calculate(const std::map<std::string, double>& context) const override {
-        auto it = context.find(name);
+    double evaluate(const std::map<std::string, double>& context) const override {
+        auto it = context.find(name_);
         if (it != context.end()) {
             return it->second;
         }
-        throw std::runtime_error("Variable '" + name + "' not found in context");
+        throw std::runtime_error("Variable '" + name_ + "' not found in context");
     }
     
-    void print(std::ostream& os = std::cout) const override {
-        os << name;
+    void print(std::ostream& os = std::cout, int = 0) const override {
+        os << name_;
+    }
+    
+    size_t getHash() const override {
+        return std::hash<std::string>{}(name_);
+    }
+    
+    bool isEqual(const Expression& other) const override {
+        const Variable* v = dynamic_cast<const Variable*>(&other);
+        return v && v->name_ == name_;
+    }
+};
+
+class Addition : public Expression {
+private:
+    std::shared_ptr<Expression> left_;
+    std::shared_ptr<Expression> right_;
+    
+public:
+    Addition(std::shared_ptr<Expression> left, std::shared_ptr<Expression> right)
+        : left_(std::move(left)), right_(std::move(right)) {}
+    
+    double evaluate(const std::map<std::string, double>& context) const override {
+        return left_->evaluate(context) + right_->evaluate(context);
+    }
+    
+    void print(std::ostream& os = std::cout, int depth = 0) const override {
+        os << "(";
+        left_->print(os, depth + 1);
+        os << " + ";
+        right_->print(os, depth + 1);
+        os << ")";
+    }
+    
+    size_t getHash() const override {
+        return left_->getHash() ^ (right_->getHash() << 1);
+    }
+    
+    bool isEqual(const Expression& other) const override {
+        const Addition* add = dynamic_cast<const Addition*>(&other);
+        return add && left_->isEqual(*add->left_) && right_->isEqual(*add->right_);
+    }
+};
+
+class Subtraction : public Expression {
+private:
+    std::shared_ptr<Expression> left_;
+    std::shared_ptr<Expression> right_;
+    
+public:
+    Subtraction(std::shared_ptr<Expression> left, std::shared_ptr<Expression> right)
+        : left_(std::move(left)), right_(std::move(right)) {}
+    
+    double evaluate(const std::map<std::string, double>& context) const override {
+        return left_->evaluate(context) - right_->evaluate(context);
+    }
+    
+    void print(std::ostream& os = std::cout, int depth = 0) const override {
+        os << "(";
+        left_->print(os, depth + 1);
+        os << " - ";
+        right_->print(os, depth + 1);
+        os << ")";
+    }
+    
+    size_t getHash() const override {
+        return left_->getHash() ^ (right_->getHash() << 1) ^ 0x12345678;
+    }
+    
+    bool isEqual(const Expression& other) const override {
+        const Subtraction* sub = dynamic_cast<const Subtraction*>(&other);
+        return sub && left_->isEqual(*sub->left_) && right_->isEqual(*sub->right_);
+    }
+};
+
+class Multiplication : public Expression {
+private:
+    std::shared_ptr<Expression> left_;
+    std::shared_ptr<Expression> right_;
+    
+public:
+    Multiplication(std::shared_ptr<Expression> left, std::shared_ptr<Expression> right)
+        : left_(std::move(left)), right_(std::move(right)) {}
+    
+    double evaluate(const std::map<std::string, double>& context) const override {
+        return left_->evaluate(context) * right_->evaluate(context);
+    }
+    
+    void print(std::ostream& os = std::cout, int depth = 0) const override {
+        os << "(";
+        left_->print(os, depth + 1);
+        os << " * ";
+        right_->print(os, depth + 1);
+        os << ")";
+    }
+    
+    size_t getHash() const override {
+        return left_->getHash() ^ (right_->getHash() << 2);
+    }
+    
+    bool isEqual(const Expression& other) const override {
+        const Multiplication* mul = dynamic_cast<const Multiplication*>(&other);
+        return mul && left_->isEqual(*mul->left_) && right_->isEqual(*mul->right_);
+    }
+};
+
+class Division : public Expression {
+private:
+    std::shared_ptr<Expression> left_;
+    std::shared_ptr<Expression> right_;
+    
+public:
+    Division(std::shared_ptr<Expression> left, std::shared_ptr<Expression> right)
+        : left_(std::move(left)), right_(std::move(right)) {}
+    
+    double evaluate(const std::map<std::string, double>& context) const override {
+        double divisor = right_->evaluate(context);
+        if (divisor == 0) {
+            throw std::runtime_error("Division by zero");
+        }
+        return left_->evaluate(context) / divisor;
+    }
+    
+    void print(std::ostream& os = std::cout, int depth = 0) const override {
+        os << "(";
+        left_->print(os, depth + 1);
+        os << " / ";
+        right_->print(os, depth + 1);
+        os << ")";
+    }
+    
+    size_t getHash() const override {
+        return left_->getHash() ^ (right_->getHash() << 3);
+    }
+    
+    bool isEqual(const Expression& other) const override {
+        const Division* div = dynamic_cast<const Division*>(&other);
+        return div && left_->isEqual(*div->left_) && right_->isEqual(*div->right_);
     }
 };
 
 // Фабрика приспособленцев
 class ExpressionFactory {
 private:
-    std::map<double, Constant*> constants;
-    std::map<std::string, Variable*> variables;
+    // Предсозданные константы от -5 до 256
+    std::vector<std::shared_ptr<Constant>> predefinedConstants_;
     
-    static const int PRECREATED_MIN = -5;
-    static const int PRECREATED_MAX = 256;
+    // Кеш для динамически создаваемых констант
+    std::unordered_map<double, std::weak_ptr<Constant>> constantsCache_;
     
-public:
+    // Кеш для переменных
+    std::unordered_map<std::string, std::weak_ptr<Variable>> variablesCache_;
+    
     ExpressionFactory() {
-        // Предсоздаем константы от -5 до 256
-        for (int i = PRECREATED_MIN; i <= PRECREATED_MAX; ++i) {
-            double value = static_cast<double>(i);
-            Constant* c = new Constant(value);
-            constants[value] = c;
-            c->addRef(); // Предсозданные константы всегда имеют ссылку
+        for (int i = -5; i <= 256; ++i) {
+            auto constant = std::shared_ptr<Constant>(new Constant(i));
+            predefinedConstants_.push_back(constant);
+            constantsCache_[i] = constant;
         }
     }
-    
-    ~ExpressionFactory() {
-        // Очищаем все константы
-        for (auto& pair : constants) {
-            delete pair.second;
-        }
-        // Очищаем все переменные
-        for (auto& pair : variables) {
-            delete pair.second;
-        }
-    }
-    
-    Constant* createConstant(double value) {
-        auto it = constants.find(value);
-        if (it != constants.end()) {
-            it->second->addRef();
-            return it->second;
-        }
-        
-        Constant* c = new Constant(value);
-        constants[value] = c;
-        c->addRef();
-        return c;
-    }
-    
-    Variable* createVariable(const std::string& name) {
-        auto it = variables.find(name);
-        if (it != variables.end()) {
-            it->second->addRef();
-            return it->second;
-        }
-        
-        Variable* v = new Variable(name);
-        variables[name] = v;
-        v->addRef();
-        return v;
-    }
-    
-    void releaseConstant(Constant* c) {
-        if (!c) return;
-        
-        double value = c->getValue();
-        // Предсозданные константы не удаляем
-        if (value >= PRECREATED_MIN && value <= PRECREATED_MAX && 
-            value == static_cast<int>(value)) {
-            c->release();
-            return;
-        }
-        
-        c->release();
-        if (c->getRefCount() <= 0) {
-            constants.erase(c->getValue());
-            delete c;
-        }
-    }
-    
-    void releaseVariable(Variable* v) {
-        if (!v) return;
-        
-        v->release();
-        if (v->getRefCount() <= 0) {
-            variables.erase(v->getName());
-            delete v;
-        }
-    }
-    
-    size_t getConstantCount() const { return constants.size(); }
-    size_t getVariableCount() const { return variables.size(); }
-};
-
-// Бинарный оператор (Компоновщик)
-class BinaryOperation : public Expression {
-protected:
-    Expression* left;
-    Expression* right;
-    ExpressionFactory* factory; // Добавляем ссылку на фабрику
     
 public:
-    BinaryOperation(Expression* l, Expression* r, ExpressionFactory* f) 
-        : left(l), right(r), factory(f) {}
-    
-    virtual ~BinaryOperation() {
-        // Вместо прямого delete, освобождаем через фабрику для приспособленцев
-        releaseExpression(left);
-        releaseExpression(right);
+    // Singleton
+    static ExpressionFactory& getInstance() {    // Создается один раз при первом вызове (статическое поле внутри статической функции)
+        static ExpressionFactory instance;
+        return instance;
     }
     
-private:
-    void releaseExpression(Expression* expr) {
-        if (!expr) return;
+    ExpressionFactory(const ExpressionFactory&) = delete;
+    ExpressionFactory& operator=(const ExpressionFactory&) = delete;
+    
+    // Создание константы (shared_ptr)
+    std::shared_ptr<Constant> createConstant(double value) {
+        // Проверяем, находится ли значение в диапазоне предсозданных констант
+        if (value >= -5 && value <= 256 && value == static_cast<int>(value)) {
+            int index = static_cast<int>(value) + 5;
+            return predefinedConstants_[index];
+        }
         
-        // Проверяем, является ли выражение приспособленцем
-        if (expr->isLeaf()) {
-            if (auto* constant = dynamic_cast<Constant*>(expr)) {
-                factory->releaseConstant(constant);
-            } else if (auto* variable = dynamic_cast<Variable*>(expr)) {
-                factory->releaseVariable(variable);
+        // Проверяем кеш
+        auto it = constantsCache_.find(value);
+        if (it != constantsCache_.end()) {
+            auto shared = it->second.lock();
+            if (shared) {
+                return shared;
             }
-        } else {
-            // Для составных выражений - удаляем через деструктор
-            delete expr;
+        }
+        
+        // Создаём новую константу
+        auto constant = std::shared_ptr<Constant>(new Constant(value));
+        constantsCache_[value] = constant;
+        return constant;
+    }
+    
+    std::shared_ptr<Variable> createVariable(const std::string& name) {
+        auto it = variablesCache_.find(name);
+        if (it != variablesCache_.end()) {
+            auto shared = it->second.lock();
+            if (shared) {
+                return shared;
+            }
+        }
+        
+        auto variable = std::shared_ptr<Variable>(new Variable(name));
+        variablesCache_[name] = variable;
+        return variable;
+    }
+    
+    void cleanup() {
+        for (auto it = constantsCache_.begin(); it != constantsCache_.end();) {
+            if (it->second.expired()) {
+                it = constantsCache_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        
+        for (auto it = variablesCache_.begin(); it != variablesCache_.end();) {
+            if (it->second.expired()) {
+                it = variablesCache_.erase(it);
+            } else {
+                ++it;
+            }
         }
     }
-};
-
-// Сложение
-class Addition : public BinaryOperation {
-public:
-    Addition(Expression* l, Expression* r, ExpressionFactory* f) 
-        : BinaryOperation(l, r, f) {}
     
-    double calculate(const std::map<std::string, double>& context) const override {
-        return left->calculate(context) + right->calculate(context);
-    }
-    
-    void print(std::ostream& os = std::cout) const override {
-        os << "(";
-        left->print(os);
-        os << " + ";
-        right->print(os);
-        os << ")";
-    }
-};
-
-// Вычитание
-class Subtraction : public BinaryOperation {
-public:
-    Subtraction(Expression* l, Expression* r, ExpressionFactory* f) 
-        : BinaryOperation(l, r, f) {}
-    
-    double calculate(const std::map<std::string, double>& context) const override {
-        return left->calculate(context) - right->calculate(context);
-    }
-    
-    void print(std::ostream& os = std::cout) const override {
-        os << "(";
-        left->print(os);
-        os << " - ";
-        right->print(os);
-        os << ")";
-    }
-};
-
-// Умножение
-class Multiplication : public BinaryOperation {
-public:
-    Multiplication(Expression* l, Expression* r, ExpressionFactory* f) 
-        : BinaryOperation(l, r, f) {}
-    
-    double calculate(const std::map<std::string, double>& context) const override {
-        return left->calculate(context) * right->calculate(context);
-    }
-    
-    void print(std::ostream& os = std::cout) const override {
-        os << "(";
-        left->print(os);
-        os << " * ";
-        right->print(os);
-        os << ")";
-    }
-};
-
-// Деление
-class Division : public BinaryOperation {
-public:
-    Division(Expression* l, Expression* r, ExpressionFactory* f) 
-        : BinaryOperation(l, r, f) {}
-    
-    double calculate(const std::map<std::string, double>& context) const override {
-        double divisor = right->calculate(context);
-        if (divisor == 0) {
-            throw std::runtime_error("Division by zero");
+    // Получение статистики использования
+    size_t getConstantCount() const {
+        size_t count = 0;
+        for (const auto& pair : constantsCache_) {
+            if (!pair.second.expired()) {
+                ++count;
+            }
         }
-        return left->calculate(context) / divisor;
+        return count;
     }
     
-    void print(std::ostream& os = std::cout) const override {
-        os << "(";
-        left->print(os);
-        os << " / ";
-        right->print(os);
-        os << ")";
+    size_t getVariableCount() const {
+        size_t count = 0;
+        for (const auto& pair : variablesCache_) {
+            if (!pair.second.expired()) {
+                ++count;
+            }
+        }
+        return count;
     }
 };
 
-// Пример использования
 int main() {
-    ExpressionFactory factory;
+    auto& factory = ExpressionFactory::getInstance();
     
-    std::cout << "=== Пример 1: 2 + x при x = 3 ===" << std::endl;
-    Constant* c = factory.createConstant(2);
-    Variable* v = factory.createVariable("x");
-    Addition* expression = new Addition(c, v, &factory);
+    // 2 + x при x = 3
+    auto c = factory.createConstant(2);
+    auto v = factory.createVariable("x");
+    auto expression = std::make_unique<Addition>(c, v);
     
     std::map<std::string, double> context;
     context["x"] = 3;
     
-    std::cout << "Выражение: " << *expression << std::endl;
-    std::cout << "Результат: " << expression->calculate(context) << std::endl;
+    std::cout << "Expression: " << *expression << std::endl;
+    std::cout << "Result: " << expression->evaluate(context) << std::endl;
     
-    delete expression;
+    auto c2 = factory.createConstant(2);
+    auto v2 = factory.createVariable("x");
     
-    std::cout << "\n=== Пример 2: Сложное выражение ===" << std::endl;
-    Variable* x = factory.createVariable("x");
-    Variable* y = factory.createVariable("y");
-    Constant* c5 = factory.createConstant(5);
-    Constant* c10 = factory.createConstant(10);
+    std::cout << "\nSame constant: " << (c == c2 ? "yes" : "no") << std::endl;
+    std::cout << "Same variable: " << (v == v2 ? "yes" : "no") << std::endl;
     
-    // (x + 5) * (y - 10)
-    Addition* add = new Addition(x, c5, &factory);
-    Subtraction* sub = new Subtraction(y, c10, &factory);
-    Multiplication* mul = new Multiplication(add, sub, &factory);
+    auto c5 = factory.createConstant(5);
+    auto y = factory.createVariable("y");
+    auto c10 = factory.createConstant(10);
+    auto z = factory.createVariable("z");
+    auto c3 = factory.createConstant(3);
     
-    context["x"] = 10;
-    context["y"] = 20;
+    auto mult = std::make_shared<Multiplication>(c5, y);
+    auto add = std::make_shared<Addition>(mult, c10);
+    auto sub = std::make_shared<Subtraction>(z, c3);
+    auto div = std::make_shared<Division>(add, sub);
     
-    std::cout << "Выражение: " << *mul << std::endl;
-    std::cout << "Результат: " << mul->calculate(context) << std::endl;
+    context["y"] = 2;
+    context["z"] = 5;
     
-    delete mul;
+    std::cout << "\nComplex expression: " << *div << std::endl;
+    std::cout << "Result: " << div->evaluate(context) << std::endl;
     
-    std::cout << "\n=== Пример 3: Сложное выражение с делением ===" << std::endl;
-    Variable* a = factory.createVariable("a");
-    Variable* b = factory.createVariable("b");
-    Constant* c3 = factory.createConstant(3);
-    Constant* c7 = factory.createConstant(7);
+    // Демонстрация использования констант из предсозданного диапазона
+    auto c100 = factory.createConstant(100);
+    auto cMinus5 = factory.createConstant(-5);
+    auto c256 = factory.createConstant(256);
     
-    // (a + 3) / (b - 7)
-    Addition* add2 = new Addition(a, c3, &factory);
-    Subtraction* sub2 = new Subtraction(b, c7, &factory);
-    Division* div = new Division(add2, sub2, &factory);
+    std::cout << "\nPredefined constants: " << c100->getValue() 
+              << ", " << cMinus5->getValue() 
+              << ", " << c256->getValue() << std::endl;
     
-    context["a"] = 17;
-    context["b"] = 27;
+    // Демонстрация создания константы вне диапазона
+    auto c300 = factory.createConstant(300);
+    std::cout << "Custom constant: " << c300->getValue() << std::endl;
     
-    std::cout << "Выражение: " << *div << std::endl;
-    std::cout << "Результат: " << div->calculate(context) << std::endl;
+    // Статистика использования
+    std::cout << "\nActive constants: " << factory.getConstantCount() << std::endl;
+    std::cout << "Active variables: " << factory.getVariableCount() << std::endl;
     
-    delete div;
-    
-    std::cout << "\n=== Пример 4: Демонстрация приспособленца ===" << std::endl;
-    Variable* v1 = factory.createVariable("z");
-    Variable* v2 = factory.createVariable("z");
-    
-    std::cout << "v1 и v2 - один объект? " << (v1 == v2 ? "Да" : "Нет") << std::endl;
-    std::cout << "Адрес v1: " << v1 << ", Адрес v2: " << v2 << std::endl;
-    std::cout << "Счетчик ссылок z: " << v1->getRefCount() << std::endl;
-    
-    factory.releaseVariable(v1);
-    factory.releaseVariable(v2);
-    
-    std::cout << "\nСтатистика фабрики после освобождения:" << std::endl;
-    std::cout << "Констант: " << factory.getConstantCount() << std::endl;
-    std::cout << "Переменных: " << factory.getVariableCount() << std::endl;
+    // Принудительная очистка
+    factory.cleanup();
     
     return 0;
 }

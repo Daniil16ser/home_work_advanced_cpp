@@ -1,0 +1,3 @@
+/home/daniil/Desktop/mipt/c/home_work_advanced_cpp/3task2/build/CMakeFiles/TypeMapExample.dir
+/home/daniil/Desktop/mipt/c/home_work_advanced_cpp/3task2/build/CMakeFiles/edit_cache.dir
+/home/daniil/Desktop/mipt/c/home_work_advanced_cpp/3task2/build/CMakeFiles/rebuild_cache.dir

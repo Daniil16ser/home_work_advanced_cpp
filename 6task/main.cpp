@@ -26,7 +26,6 @@ public:
     double getLongitude() const { return longitude_; }
     Type getType() const { return type_; }
 
-    // Возвращает строковое представление штрафа
     std::string getPenaltyDisplay() const {
         if (type_ == Type::MANDATORY) {
             return "незачёт СУ";
@@ -36,15 +35,12 @@ public:
         return oss.str();
     }
 
-    // Возвращает числовое значение штрафа (0 для обязательных)
     double getNumericPenalty() const {
         return (type_ == Type::OPTIONAL) ? penalty_ : 0.0;
     }
 };
 
-// =============================================
 // Абстрактный Строитель
-// =============================================
 class ReportBuilder {
 public:
     virtual ~ReportBuilder() = default;
@@ -54,9 +50,7 @@ public:
     virtual void finishReport() = 0;
 };
 
-// =============================================
 // Распорядитель
-// =============================================
 class RallyReportDirector {
 public:
     void setBuilder(ReportBuilder* builder) {
@@ -77,16 +71,14 @@ private:
     ReportBuilder* builder_ = nullptr;
 };
 
-// =============================================
-// ConcreteBuilder 1: Текстовый отчёт
-// =============================================
+// строитель 1 с текстовым отсчетом
 class TextReportBuilder : public ReportBuilder {
 private:
     std::ostringstream report_;
 
 public:
     void startReport() override {
-        report_.str("");  // очистка
+        report_.str("");
         report_ << "=== Трасса трофи-рейда ===\n";
         report_ << std::left
                 << std::setw(5)  << "№"
@@ -118,9 +110,7 @@ public:
     }
 };
 
-// =============================================
-// ConcreteBuilder 2: Подсчёт суммарного штрафа
-// =============================================
+// строитель 2 с подсчетом суммарного штрафа
 class PenaltyCalculator : public ReportBuilder {
 private:
     double totalPenalty_ = 0.0;
@@ -144,11 +134,7 @@ public:
     }
 };
 
-// =============================================
-// Клиентский код (демонстрация)
-// =============================================
 int main() {
-    // Тестовые данные
     std::vector<Checkpoint> checkpoints = {
         {"Старт",   55.7558, 37.6176, Checkpoint::Type::MANDATORY},
         {"Брод",    55.8122, 37.5023, Checkpoint::Type::OPTIONAL,  1.5},
@@ -159,13 +145,11 @@ int main() {
 
     RallyReportDirector director;
 
-    // --- Вариант 1: текстовый отчёт ---
     TextReportBuilder textBuilder;
     director.setBuilder(&textBuilder);
     director.buildReport(checkpoints);
     std::cout << textBuilder.getResult() << "\n";
 
-    // --- Вариант 2: суммарный штраф ---
     PenaltyCalculator penaltyCalc;
     director.setBuilder(&penaltyCalc);
     director.buildReport(checkpoints);

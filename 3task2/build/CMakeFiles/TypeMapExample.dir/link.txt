@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/TypeMapExample.dir/main.cpp.o -o TypeMapExample 

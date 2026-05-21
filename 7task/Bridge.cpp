@@ -16,11 +16,11 @@ public:
     virtual std::unique_ptr<SetImplementation> clone() const = 0;
 };
 
-// Конкретная реализация 1: Массив для маленьких множеств
+// Массив для маленьких множеств
 class ArraySet : public SetImplementation {
 private:
     std::vector<int> elements;
-    static const size_t MAX_SIZE = 10; // Порог для переключения
+    static const size_t MAX_SIZE = 10;
     
     void sortAndUnique() {
         std::sort(elements.begin(), elements.end());
@@ -63,7 +63,7 @@ public:
     static size_t getMaxSize() { return MAX_SIZE; }
 };
 
-// Конкретная реализация 2: Хеш-таблица для больших множеств
+//  Хеш-таблица для больших множеств
 class HashSet : public SetImplementation {
 private:
     std::unordered_set<int> elements;
@@ -96,23 +96,20 @@ public:
     }
 };
 
-// Абстракция - класс Множество
 class Set {
 private:
     std::unique_ptr<SetImplementation> implementation;
     
-    // Проверка необходимости смены реализации
     void checkAndSwitchImplementation() {
         size_t currentSize = implementation->size();
         
-        // Если используется массив и размер превышает порог
-        if (dynamic_cast<ArraySet*>(implementation.get()) && 
+        if (dynamic_cast<ArraySet*>(implementation.get()) && // пытаемся преобразовать указатель implementation на конкретный класс ArraySet
             currentSize > ArraySet::getMaxSize()) {
             switchToHashSet();
         }
         // Если используется HashSet и размер маленький
         else if (dynamic_cast<HashSet*>(implementation.get()) && 
-                 currentSize <= ArraySet::getMaxSize() / 2) {
+                 currentSize <= ArraySet::getMaxSize()) {
             switchToArraySet();
         }
     }
@@ -140,11 +137,9 @@ private:
 public:
     Set() : implementation(std::make_unique<ArraySet>()) {}
     
-    // Конструктор копирования
     Set(const Set& other) 
         : implementation(other.implementation->clone()) {}
     
-    // Оператор присваивания
     Set& operator=(const Set& other) {
         if (this != &other) {
             implementation = other.implementation->clone();
@@ -174,7 +169,6 @@ public:
         return implementation->getElements();
     }
     
-    // Объединение множеств
     Set unionWith(const Set& other) const {
         Set result = *this;
         auto otherElements = other.getElements();
@@ -184,7 +178,6 @@ public:
         return result;
     }
     
-    // Пересечение множеств
     Set intersectWith(const Set& other) const {
         Set result;
         auto elements = getElements();
@@ -196,7 +189,6 @@ public:
         return result;
     }
     
-    // Вывод множества
     void print() const {
         auto elements = getElements();
         std::cout << "{ ";
@@ -216,7 +208,6 @@ public:
     }
 };
 
-// Демонстрация работы
 int main() {
     std::cout << "=== Демонстрация паттерна Bridge для множества ===\n\n";
     
