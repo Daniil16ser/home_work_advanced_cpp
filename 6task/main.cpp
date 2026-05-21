@@ -5,9 +5,7 @@
 #include <iomanip>
 #include <sstream>
 
-// =============================================
-// Модель данных: Контрольный пункт
-// =============================================
+// Модель данных
 class Checkpoint {
 public:
     enum class Type { MANDATORY, OPTIONAL };
